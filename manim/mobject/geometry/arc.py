@@ -51,6 +51,7 @@ import numpy as np
 
 from manim.constants import *
 from manim.mobject.opengl.opengl_compatibility import ConvertToOpenGL
+from manim.mobject.opengl.opengl_vectorized_mobject import OpenGLVMobject
 from manim.mobject.types.vectorized_mobject import VGroup, VMobject
 from manim.utils.color import BLACK, BLUE, RED, WHITE, ParsableManimColor
 from manim.utils.iterables import adjacent_pairs
@@ -342,20 +343,8 @@ class Arc(TipableVMobject):
         self.shift(self.arc_center)
         return self
 
-    # Points are set a bit differently when rendering via OpenGL.
-    # TODO: refactor Arc so that only one strategy for setting points
-    # has to be used.
     def init_points(self) -> Self:
-        self.set_points(
-            Arc._create_quadratic_bezier_points(
-                angle=self.angle,
-                start_angle=self.start_angle,
-                n_components=self.num_components,
-            ),
-        )
-        self.scale(self.radius, about_point=ORIGIN)
-        self.shift(self.arc_center)
-        return self
+        return self.generate_points()
 
     @staticmethod
     def _create_quadratic_bezier_points(
@@ -381,6 +370,22 @@ class Arc(TipableVMobject):
         return points
 
     def _set_pre_positioned_points(self) -> None:
+        """Set the points of a unit arc centered at the origin.
+
+        The OpenGL renderer stores quadratic Bézier curves, while the Cairo
+        renderer stores cubic ones, so the point layout depends on the base
+        class set by ``ConvertToOpenGL``, which follows ``config.renderer``.
+        """
+        if isinstance(self, OpenGLVMobject):
+            self.set_points(
+                Arc._create_quadratic_bezier_points(
+                    angle=self.angle,
+                    start_angle=self.start_angle,
+                    n_components=self.num_components,
+                ),
+            )
+            return
+
         anchors = np.array(
             [
                 np.cos(a) * RIGHT + np.sin(a) * UP
@@ -1030,10 +1035,6 @@ class AnnularSector(Arc):
         self.add_line_to(inner_arc.points[0])
         return self
 
-    def init_points(self) -> Self:
-        self.generate_points()
-        return self
-
 
 class Sector(AnnularSector):
     """A sector of a circle.
@@ -1105,10 +1106,6 @@ class Annulus(Circle):
         self.append_points(outer_circle.points)
         self.append_points(inner_circle.points)
         self.shift(self.arc_center)
-        return self
-
-    def init_points(self) -> Self:
-        self.generate_points()
         return self
 
 
